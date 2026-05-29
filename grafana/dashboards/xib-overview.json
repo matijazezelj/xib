@@ -67,7 +67,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(last_over_time(vib_cve_count{severity=\"CRITICAL\"}[8h])) or vector(0)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h])) or vector(0)",
           "legendFormat": "Critical",
           "refId": "A"
         }
@@ -105,7 +105,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(last_over_time(vib_cve_count{severity=\"HIGH\"}[8h])) or vector(0)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h])) or vector(0)",
           "legendFormat": "High",
           "refId": "A"
         }
@@ -205,7 +205,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "count(count by (container) (last_over_time(vib_cve_count[8h]))) or vector(0)",
+          "expr": "last_over_time(vib_images_scanned_total[8h]) or vector(0)",
           "legendFormat": "Containers",
           "refId": "A"
         }
@@ -245,7 +245,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum by (severity) (vib_cve_count)",
+          "expr": "sum by (severity) (vib_vulnerabilities_total)",
           "legendFormat": "{{severity}}",
           "refId": "A"
         }
@@ -293,7 +293,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "cib-vm" },
-          "expr": "sum(last_over_time(cib_policy_violations_total[8h])) or vector(0)",
+          "expr": "last_over_time(cib_total_policy_violations[8h]) or vector(0)",
           "legendFormat": "Violations",
           "refId": "A"
         }
@@ -340,7 +340,7 @@
     {
       "id": 12,
       "type": "stat",
-      "title": "EOL Components",
+      "title": "EOL Images",
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "cib-vm" },
       "fieldConfig": {
@@ -369,7 +369,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "cib-vm" },
-          "expr": "sum(last_over_time(cib_eol_containers_total[8h])) or vector(0)",
+          "expr": "last_over_time(cib_eol_images_total[8h]) or vector(0)",
           "legendFormat": "EOL",
           "refId": "A"
         }
@@ -407,10 +407,86 @@
       ]
     },
     {
+      "id": 40,
+      "type": "table",
+      "title": "Policy Violations Breakdown",
+      "description": "Per-container CIS policy violations from last scan. Red = violation active.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "cib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "displayMode": "auto", "filterable": true },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "container" },
+            "properties": [
+              { "id": "displayName", "value": "Container" },
+              { "id": "custom.width", "value": 260 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "check" },
+            "properties": [
+              { "id": "displayName", "value": "Check" },
+              { "id": "custom.width", "value": 260 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Value" },
+            "properties": [
+              { "id": "displayName", "value": "Status" },
+              { "id": "custom.width", "value": 120 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": { "1": { "text": "VIOLATION", "color": "red", "index": 0 } }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "footer": { "show": false },
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Container", "desc": false }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "cib-vm" },
+          "expr": "last_over_time(cib_policy_violation[8h]) == 1",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": { "names": ["container", "check", "Value"] }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": { "fields": [{ "displayName": "container", "desc": false }] }
+        }
+      ]
+    },
+    {
       "id": 102,
       "type": "text",
       "title": "",
-      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 30 },
       "options": {
         "mode": "markdown",
         "content": "## Identity & PKI"
@@ -420,7 +496,7 @@
       "id": 20,
       "type": "stat",
       "title": "Active Users",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 22 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "iib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -451,7 +527,7 @@
       "id": 21,
       "type": "stat",
       "title": "Login Failures (24h)",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 22 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "iib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -489,7 +565,7 @@
       "id": 22,
       "type": "stat",
       "title": "Certs Expiring ≤30d",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 22 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "pib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -527,7 +603,7 @@
       "id": 23,
       "type": "stat",
       "title": "Expired Certs",
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 22 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "pib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -565,7 +641,7 @@
       "id": 24,
       "type": "stat",
       "title": "Certs Monitored",
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 22 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "pib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -595,36 +671,52 @@
     {
       "id": 25,
       "type": "timeseries",
-      "title": "Cert Days Remaining",
-      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 26 },
+      "title": "Certificate Status Trend",
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 36 },
       "datasource": { "type": "prometheus", "uid": "pib-vm" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 10, "lineWidth": 2 },
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "orange", "value": 14 },
-              { "color": "yellow", "value": 30 },
-              { "color": "green", "value": 60 }
-            ]
-          }
+          "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Expired" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Expiring <7d" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Expiring <30d" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+          }
+        ]
       },
       "options": {
-        "legend": { "calcs": ["lastNotNull", "min"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "multi", "sort": "asc" }
       },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "pib-vm" },
-          "expr": "pib_cert_days_remaining",
-          "legendFormat": "{{host}}",
+          "expr": "pib_certs_expired",
+          "legendFormat": "Expired",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "pib-vm" },
+          "expr": "pib_certs_expiring_critical",
+          "legendFormat": "Expiring <7d",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "pib-vm" },
+          "expr": "pib_certs_expiring_warning",
+          "legendFormat": "Expiring <30d",
+          "refId": "C"
         }
       ]
     },
@@ -632,7 +724,7 @@
       "id": 26,
       "type": "timeseries",
       "title": "Login Events (24h window)",
-      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 26 },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 36 },
       "datasource": { "type": "prometheus", "uid": "iib-vm" },
       "fieldConfig": {
         "defaults": {
@@ -674,7 +766,7 @@
       "id": 103,
       "type": "text",
       "title": "",
-      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 34 },
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 44 },
       "options": {
         "mode": "markdown",
         "content": "## Sync Status"
@@ -684,7 +776,7 @@
       "id": 30,
       "type": "table",
       "title": "Last Sync Timestamps",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 36 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 46 },
       "fieldConfig": {
         "defaults": {
           "custom": { "align": "auto", "displayMode": "auto" },
@@ -704,35 +796,35 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "vib_last_scan_timestamp / 1000",
+          "expr": "last_over_time(vib_last_scan_timestamp[8h]) / 1000",
           "instant": true,
           "legendFormat": "VIB — Vulnerabilities",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "tib-vm" },
-          "expr": "tib_last_sync_timestamp / 1000",
+          "expr": "last_over_time(tib_last_sync_timestamp[8h]) / 1000",
           "instant": true,
           "legendFormat": "TIB — Threat Intel",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "cib-vm" },
-          "expr": "cib_last_scan_timestamp / 1000",
+          "expr": "last_over_time(cib_last_scan_timestamp[8h]) / 1000",
           "instant": true,
           "legendFormat": "CIB — Compliance",
           "refId": "C"
         },
         {
           "datasource": { "type": "prometheus", "uid": "iib-vm" },
-          "expr": "iib_last_sync_timestamp / 1000",
+          "expr": "last_over_time(iib_last_sync_timestamp[8h]) / 1000",
           "instant": true,
           "legendFormat": "IIB — Identity",
           "refId": "D"
         },
         {
           "datasource": { "type": "prometheus", "uid": "pib-vm" },
-          "expr": "pib_last_scan_timestamp / 1000",
+          "expr": "last_over_time(pib_last_scan_timestamp[8h]) / 1000",
           "instant": true,
           "legendFormat": "PIB — PKI",
           "refId": "E"
@@ -765,5 +857,5 @@
   "timezone": "browser",
   "title": "XIB — Security Overview",
   "uid": "xib-overview",
-  "version": 1
+  "version": 2
 }
