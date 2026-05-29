@@ -1,29 +1,14 @@
 include:
   - path: ./vib/docker-compose.yml
     project_directory: ./vib
-    env_file:
-      - path: ./vib/.env
-        required: false
   - path: ./tib/docker-compose.yml
     project_directory: ./tib
-    env_file:
-      - path: ./tib/.env
-        required: false
   - path: ./cib/docker-compose.yml
     project_directory: ./cib
-    env_file:
-      - path: ./cib/.env
-        required: false
   - path: ./iib/docker-compose.yml
     project_directory: ./iib
-    env_file:
-      - path: ./iib/.env
-        required: false
   - path: ./pib/docker-compose.yml
     project_directory: ./pib
-    env_file:
-      - path: ./pib/.env
-        required: false
 
 # Shared SSO environment block — merged into every Grafana service.
 # Values are empty until 'make setup-sso' runs; SSO stays disabled until
