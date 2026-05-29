@@ -2,6 +2,8 @@
 
 Umbrella project that composes all **in-a-box** security tools into a single stack with a unified Grafana posture dashboard.
 
+![Dashboard preview](docs/dashboard-preview.png)
+
 ```
 make up
 ```
@@ -137,3 +139,9 @@ make up
 ```
 
 XIB adds no dependencies to the individual tools — they function identically with or without the umbrella.
+
+---
+
+## License
+
+MIT
