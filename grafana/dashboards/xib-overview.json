@@ -429,8 +429,26 @@
           {
             "matcher": { "id": "byName", "options": "check" },
             "properties": [
-              { "id": "displayName", "value": "Check" },
-              { "id": "custom.width", "value": 260 }
+              { "id": "displayName", "value": "Check — How to fix" },
+              { "id": "custom.width", "value": 480 },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "memory_limit":      { "text": "memory_limit — add deploy.resources.limits.memory in compose", "index": 0 },
+                      "cpu_limit":         { "text": "cpu_limit — add deploy.resources.limits.cpus in compose", "index": 1 },
+                      "no_new_privileges": { "text": "no_new_privileges — add security_opt: ['no-new-privileges:true']", "index": 2 },
+                      "non_root_user":     { "text": "non_root_user — set user: '1000' (any non-root UID)", "index": 3 },
+                      "read_only_rootfs":  { "text": "read_only_rootfs — add read_only: true to service", "index": 4 },
+                      "not_privileged":    { "text": "not_privileged — remove privileged: true from HostConfig", "index": 5 },
+                      "no_host_network":   { "text": "no_host_network — remove network_mode: host", "index": 6 },
+                      "no_host_pid":       { "text": "no_host_pid — remove pid: host", "index": 7 }
+                    }
+                  }
+                ]
+              }
             ]
           },
           {
