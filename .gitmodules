@@ -1,0 +1,15 @@
+[submodule "vib"]
+	path = vib
+	url = git@github.com:matijazezelj/vib.git
+[submodule "tib"]
+	path = tib
+	url = git@github.com:matijazezelj/tib.git
+[submodule "cib"]
+	path = cib
+	url = git@github.com:matijazezelj/cib.git
+[submodule "iib"]
+	path = iib
+	url = git@github.com:matijazezelj/iib.git
+[submodule "pib"]
+	path = pib
+	url = git@github.com:matijazezelj/pib.git

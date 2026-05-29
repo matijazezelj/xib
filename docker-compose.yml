@@ -1,0 +1,58 @@
+include:
+  - path: ./vib/docker-compose.yml
+    project_directory: ./vib
+    env_file:
+      - path: ./vib/.env
+        required: false
+  - path: ./tib/docker-compose.yml
+    project_directory: ./tib
+    env_file:
+      - path: ./tib/.env
+        required: false
+  - path: ./cib/docker-compose.yml
+    project_directory: ./cib
+    env_file:
+      - path: ./cib/.env
+        required: false
+  - path: ./iib/docker-compose.yml
+    project_directory: ./iib
+    env_file:
+      - path: ./iib/.env
+        required: false
+  - path: ./pib/docker-compose.yml
+    project_directory: ./pib
+    env_file:
+      - path: ./pib/.env
+        required: false
+
+services:
+  xib-grafana:
+    image: grafana/grafana:latest
+    container_name: xib-grafana
+    restart: unless-stopped
+    ports:
+      - "${XIB_GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${XIB_GRAFANA_PASSWORD:-changeme}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/xib-overview.json
+    volumes:
+      - xib-grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - vib
+      - tib
+      - cib
+      - iib
+      - pib
+    depends_on:
+      - vib-victoriametrics
+      - tib-victoriametrics
+      - cib-victoriametrics
+      - iib-victoriametrics
+      - pib-victoriametrics
+
+volumes:
+  xib-grafana-data:

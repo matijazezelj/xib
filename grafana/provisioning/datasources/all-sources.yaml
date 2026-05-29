@@ -1,0 +1,57 @@
+apiVersion: 1
+
+datasources:
+  - name: VIB — Vulnerabilities
+    type: prometheus
+    uid: vib-vm
+    url: http://vib-victoriametrics:8428
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "30s"
+
+  - name: TIB — Threat Intel
+    type: prometheus
+    uid: tib-vm
+    url: http://tib-victoriametrics:8428
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "30s"
+
+  - name: CIB — Compliance
+    type: prometheus
+    uid: cib-vm
+    url: http://cib-victoriametrics:8428
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "30s"
+
+  - name: IIB — Identity
+    type: prometheus
+    uid: iib-vm
+    url: http://iib-victoriametrics:8428
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "15s"
+
+  - name: PIB — PKI
+    type: prometheus
+    uid: pib-vm
+    url: http://pib-victoriametrics:8428
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "60s"
