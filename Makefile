@@ -1,4 +1,4 @@
-.PHONY: up down restart logs build clean setup update pull-submodules
+.PHONY: up down restart logs build clean setup setup-sso update pull-submodules
 
 up: setup
 	docker compose up -d
@@ -29,6 +29,11 @@ setup:
 	done
 	@if [ -f iib/Makefile ]; then $(MAKE) -C iib generate-secrets; fi
 	@if [ -f pib/Makefile ]; then $(MAKE) -C pib ca-password; fi
+
+# Wire up Grafana SSO and PIB OIDC provisioner via Authentik.
+# Run this once after 'make up' and Authentik has fully initialised.
+setup-sso:
+	@bash scripts/setup-sso.sh
 
 # Pull latest commits on all submodules
 update:

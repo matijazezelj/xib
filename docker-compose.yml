@@ -25,7 +25,69 @@ include:
       - path: ./pib/.env
         required: false
 
+# Shared SSO environment block — merged into every Grafana service.
+# Values are empty until 'make setup-sso' runs; SSO stays disabled until
+# GRAFANA_SSO_ENABLED=true is set in .env.
+x-grafana-sso: &grafana-sso
+  GF_AUTH_GENERIC_OAUTH_ENABLED: "${GRAFANA_SSO_ENABLED:-false}"
+  GF_AUTH_GENERIC_OAUTH_NAME: "Authentik"
+  GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "${AUTHENTIK_GRAFANA_CLIENT_ID:-}"
+  GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "${AUTHENTIK_GRAFANA_CLIENT_SECRET:-}"
+  GF_AUTH_GENERIC_OAUTH_SCOPES: "openid email profile"
+  # Auth URL must be browser-accessible; token/userinfo are container-internal
+  GF_AUTH_GENERIC_OAUTH_AUTH_URL: "${AUTHENTIK_EXTERNAL_URL:-http://localhost:9080}/application/o/authorize/"
+  GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "http://iib-server:9000/application/o/token/"
+  GF_AUTH_GENERIC_OAUTH_API_URL: "http://iib-server:9000/application/o/userinfo/"
+  GF_AUTH_SIGNOUT_REDIRECT_URL: "${AUTHENTIK_EXTERNAL_URL:-http://localhost:9080}/application/o/grafana/end-session/"
+  GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+  GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "${GRAFANA_SSO_AUTO_LOGIN:-false}"
+  GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(groups[*], 'Grafana Admins') && 'Admin' || 'Viewer'"
+
 services:
+
+  # ── Integration 1: TIB → VIB cross-reference ──────────────────────────────
+  # Joins tib-collector to the vib network so it can reach vib-victoriametrics
+  # and cross-reference live CVEs against the CISA KEV catalog.
+  tib-collector:
+    networks:
+      - vib
+    environment:
+      VIB_VICTORIAMETRICS_URL: "http://vib-victoriametrics:8428"
+
+  # ── Integration 2: Grafana SSO via Authentik (IIB) ────────────────────────
+  # All Grafana instances join the iib network and receive OAuth2 env vars.
+  # SSO is off by default (GRAFANA_SSO_ENABLED=false) until 'make setup-sso'.
+
+  vib-grafana:
+    networks:
+      - iib
+    environment:
+      <<: *grafana-sso
+
+  tib-grafana:
+    networks:
+      - iib
+    environment:
+      <<: *grafana-sso
+
+  cib-grafana:
+    networks:
+      - iib
+    environment:
+      <<: *grafana-sso
+
+  # iib-grafana is already on the iib network — just add SSO env vars
+  iib-grafana:
+    environment:
+      <<: *grafana-sso
+
+  pib-grafana:
+    networks:
+      - iib
+    environment:
+      <<: *grafana-sso
+
+  # ── XIB unified Grafana ────────────────────────────────────────────────────
   xib-grafana:
     image: grafana/grafana:latest
     container_name: xib-grafana
@@ -33,10 +95,11 @@ services:
     ports:
       - "${XIB_GRAFANA_PORT:-3000}:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${XIB_GRAFANA_PASSWORD:-changeme}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/xib-overview.json
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${XIB_GRAFANA_PASSWORD:-changeme}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/xib-overview.json
+      <<: *grafana-sso
     volumes:
       - xib-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -53,6 +116,13 @@ services:
       - cib-victoriametrics
       - iib-victoriametrics
       - pib-victoriametrics
+
+  # ── Integration 3: PIB step-ca on IIB network ─────────────────────────────
+  # Allows step-ca to reach Authentik's OIDC discovery endpoint for the
+  # OIDC provisioner configured by 'make setup-sso'.
+  pib-ca:
+    networks:
+      - iib
 
 volumes:
   xib-grafana-data:
