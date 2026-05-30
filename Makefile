@@ -1,4 +1,4 @@
-.PHONY: up down restart logs build clean setup setup-sso update pull-submodules
+.PHONY: up down restart logs build clean setup setup-sso smoke update pull-submodules
 
 up: setup
 	docker compose up -d
@@ -34,6 +34,9 @@ setup:
 # Run this once after 'make up' and Authentik has fully initialised.
 setup-sso:
 	@bash scripts/setup-sso.sh
+
+smoke: ## Run local runtime smoke checks against the XIB stack
+	@bash scripts/smoke-test.sh
 
 # Pull latest commits on all submodules
 update:
