@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Validate Compose model
+        run: docker compose config >/tmp/xib-compose.yml
+      - name: Validate helper scripts
+        run: |
+          if compgen -G "scripts/*.sh" > /dev/null; then
+            for script in scripts/*.sh; do
+              if head -1 "$script" | grep -q 'bash'; then bash -n "$script"; else sh -n "$script"; fi
+            done
+          fi
