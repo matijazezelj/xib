@@ -16,17 +16,7 @@ logs:
 	docker compose logs -f
 
 setup:
-	@if [ ! -f .env ]; then \
-		echo "Creating .env from .env.example..."; \
-		cp .env.example .env; \
-	fi
-	@echo "Initialising sub-project environments..."
-	@for dir in vib tib cib iib pib; do \
-		if [ ! -f $$dir/.env ] && [ -f $$dir/.env.example ]; then \
-			echo "  $$dir: creating .env from .env.example"; \
-			cp $$dir/.env.example $$dir/.env; \
-		fi; \
-	done
+	@bash scripts/init-env.sh
 	@if [ -f iib/Makefile ]; then $(MAKE) -C iib generate-secrets; fi
 	@if [ -f pib/Makefile ]; then $(MAKE) -C pib ca-password; fi
 
@@ -49,4 +39,3 @@ pull-submodules:
 
 clean:
 	docker compose down -v
-	docker rmi xib-grafana 2>/dev/null || true
