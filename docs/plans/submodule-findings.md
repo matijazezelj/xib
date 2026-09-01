@@ -64,6 +64,31 @@ Measured against VictoriaMetrics v1.151.0 with four outpost names: the old order
 sent 4 lines, got HTTP 204, and stored **2** — both quote-containing values were
 gone. The fixed order stores all 4 and round-trips `a"b\c` intact.
 
+### Same defect, opposite exposure — `iib` was live, `tib` was latent
+
+Worth keeping straight when prioritising, because the two are not equally
+urgent despite being the same bug:
+
+- **`iib` was actively losing data.** It labels `iib_outpost_healthy` with
+  outpost names from Authentik, which are free text a user can type. Measured:
+  4 lines sent, HTTP 204, 2 stored.
+- **`tib`'s copy never fired.** Checked all 1687 entries of the current KEV
+  catalog (version 2026.08.31) against the four KEV-derived labels
+  `tib_kev_match` actually emits — `vendor`, `product`, `due_date`,
+  `ransomware`: **zero** contain a quote, backslash or newline. The characters
+  do occur in the feed, but only in `shortDescription` (27 entries),
+  `notes` (2), `vulnerabilityName` (1, CVE-2018-20062) and `requiredAction`
+  (1) — fields `tib` reads but never turns into labels. Its other label
+  sources cannot carry them either: `cve_id` matches `CVE-\d+-\d+`,
+  `severity` is an enum, and `image` is a Docker reference, whose grammar
+  excludes both characters.
+
+The latent case is one feed change or one added label away from firing, and it
+fails silently. Adding `vulnerability_name` as a label — a natural dashboard
+improvement — would break on CVE-2018-20062 immediately, with a 204 and no
+error anywhere. That is the argument for eventually moving `tib` past
+`0d55328`, which carries its escaping fix, rather than never.
+
 The other three were checked and are already correct — they escape the
 backslash first:
 
