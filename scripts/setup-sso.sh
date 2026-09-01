@@ -15,13 +15,29 @@ die()   { echo -e "${RED}[xib]${NC} ERROR: $*" >&2; exit 1; }
 # ── Load config ──────────────────────────────────────────────────────────────
 
 get_env() { grep "^${1}=" "$2" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+
+# Values arrive through the environment, so a client secret is never parsed as
+# sed replacement syntax. `sed -i` is avoided because BSD and GNU disagree on
+# whether it takes an argument.
 set_env() {
-  local key="$1" val="$2" file="$3"
-  if grep -q "^${key}=" "$file" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$file"
-  else
-    echo "${key}=${val}" >> "$file"
-  fi
+  KEY="$1" VAL="$2" python3 - "$3" <<'SETENV'
+import os, pathlib, sys
+
+key, val = os.environ["KEY"], os.environ["VAL"]
+path = pathlib.Path(sys.argv[1])
+prefix = key + "="
+out, replaced = [], False
+for line in path.read_text().splitlines():
+    if line.startswith(prefix):
+        if not replaced:
+            out.append(prefix + val)
+            replaced = True
+        continue
+    out.append(line)
+if not replaced:
+    out.append(prefix + val)
+path.write_text("\n".join(out) + "\n")
+SETENV
 }
 
 [ -f "$IIB_ENV" ] || die "iib/.env not found — run 'make setup' first"
@@ -61,113 +77,108 @@ done
 api_get()  { curl -sf "${AUTHENTIK_API}/${1}" -H "$AUTH_HDR"; }
 api_post() { curl -sf -X POST "${AUTHENTIK_API}/${1}" -H "$AUTH_HDR" -H "Content-Type: application/json" -d "$2"; }
 
-json_get() { python3 -c "import json,sys; d=json.load(sys.stdin); print(${1})" <<< "$2"; }
+# Read a field from an Authentik API response on stdin: a list response yields
+# the first result, a single-object response the object itself. The JSON is
+# piped rather than interpolated into the Python source, because an object name
+# holding a backslash or a \uXXXX escape would otherwise be re-read as Python
+# string syntax.
+json_field() {
+  FIELD="$1" DEFAULT="${2-}" python3 -c '
+import json, os, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+if isinstance(d, dict) and "results" in d:
+    results = d.get("results") or []
+    d = results[0] if results else {}
+print(d.get(os.environ["FIELD"], os.environ["DEFAULT"]) if isinstance(d, dict) else os.environ["DEFAULT"])
+'
+}
 
 # ── Fetch prerequisites ───────────────────────────────────────────────────────
 
 info "Fetching Authentik flows and keys..."
 
-AUTH_FLOWS="$(api_get "flows/instances/?designation=authorization&ordering=name")"
-AUTH_FLOW_PK="$(json_get "d['results'][0]['pk']" "$AUTH_FLOWS")" \
-  || die "No authorization flows found in Authentik"
+AUTH_FLOW_PK="$(api_get "flows/instances/?designation=authorization&ordering=name" | json_field pk)"
+[ -n "$AUTH_FLOW_PK" ] || die "No authorization flows found in Authentik"
 
-INVAL_FLOWS="$(api_get "flows/instances/?designation=invalidation&ordering=name")"
-INVAL_FLOW_PK="$(python3 -c "
-import json,sys
-d=json.loads('''${INVAL_FLOWS}''')
-results = d.get('results', [])
-print(results[0]['pk'] if results else '')
-" 2>/dev/null || echo "")"
-
-SIGN_KEYS="$(api_get "crypto/certificatekeypairs/?has_key=true&ordering=name")"
-SIGN_KEY_PK="$(python3 -c "
-import json,sys
-d=json.loads('''${SIGN_KEYS}''')
-results = d.get('results', [])
-print(results[0]['pk'] if results else 'null')
-" 2>/dev/null || echo "null")"
+INVAL_FLOW_PK="$(api_get "flows/instances/?designation=invalidation&ordering=name" | json_field pk)"
+SIGN_KEY_PK="$(api_get "crypto/certificatekeypairs/?has_key=true&ordering=name" | json_field pk null)"
 
 info "  Authorization flow: ${AUTH_FLOW_PK}"
 info "  Signing key: ${SIGN_KEY_PK}"
 
 # ── Build Grafana redirect URI list ──────────────────────────────────────────
 
-REDIRECT_URIS_JSON="$(python3 -c "
-import json
-ports = '${GRAFANA_PORTS}'.split()
-host = '${XIB_HOST}'
-uris = [{'url': f'http://{host}:{p}/login/generic_oauth', 'matching_mode': 'strict'} for p in ports]
-# Also allow HTTPS variant
-uris += [{'url': f'https://{host}:{p}/login/generic_oauth', 'matching_mode': 'strict'} for p in ports]
+REDIRECT_URIS_JSON="$(PORTS="$GRAFANA_PORTS" HOST="$XIB_HOST" python3 -c '
+import json, os
+ports = os.environ["PORTS"].split()
+host = os.environ["HOST"]
+uris = []
+for scheme in ("http", "https"):
+    uris += [{"url": f"{scheme}://{host}:{p}/login/generic_oauth",
+              "matching_mode": "strict"} for p in ports]
 print(json.dumps(uris))
-")"
+')"
 
 # ── Create or update Grafana OAuth2 provider ─────────────────────────────────
 
 info "Provisioning Grafana OAuth2 provider in Authentik..."
 
-GRAFANA_PROVIDER_BODY="$(python3 -c "
-import json
+GRAFANA_PROVIDER_BODY="$(AUTH_FLOW="$AUTH_FLOW_PK" INVAL_FLOW="$INVAL_FLOW_PK" \
+  SIGN_KEY="$SIGN_KEY_PK" REDIRECT_URIS="$REDIRECT_URIS_JSON" python3 -c '
+import json, os
 body = {
-    'name': 'XIB Grafana SSO',
-    'authorization_flow': '${AUTH_FLOW_PK}',
-    'client_type': 'confidential',
-    'redirect_uris': json.loads('${REDIRECT_URIS_JSON}'),
-    'sub_mode': 'hashed_user_id',
-    'include_claims_in_id_token': True,
-    'issuer_mode': 'global',
-    'access_token_validity': 'hours=1',
+    "name": "XIB Grafana SSO",
+    "authorization_flow": os.environ["AUTH_FLOW"],
+    "client_type": "confidential",
+    "redirect_uris": json.loads(os.environ["REDIRECT_URIS"]),
+    "sub_mode": "hashed_user_id",
+    "include_claims_in_id_token": True,
+    "issuer_mode": "global",
+    "access_token_validity": "hours=1",
 }
-if '${INVAL_FLOW_PK}':
-    body['invalidation_flow'] = '${INVAL_FLOW_PK}'
-if '${SIGN_KEY_PK}' != 'null':
-    body['signing_key'] = '${SIGN_KEY_PK}'
+if os.environ["INVAL_FLOW"]:
+    body["invalidation_flow"] = os.environ["INVAL_FLOW"]
+if os.environ["SIGN_KEY"] != "null":
+    body["signing_key"] = os.environ["SIGN_KEY"]
 print(json.dumps(body))
-")"
+')"
 
 # Check if provider already exists
-EXISTING_PROVIDER="$(api_get "providers/oauth2/?name=XIB+Grafana+SSO" || echo "{}")"
-EXISTING_PK="$(python3 -c "
-import json,sys
-d=json.loads('''${EXISTING_PROVIDER}''')
-results = d.get('results', [])
-print(results[0]['pk'] if results else '')
-" 2>/dev/null || echo "")"
+EXISTING_PK="$({ api_get "providers/oauth2/?name=XIB+Grafana+SSO" || true; } | json_field pk)"
 
 if [ -n "$EXISTING_PK" ]; then
   warn "  Grafana provider already exists (pk=${EXISTING_PK}), skipping creation."
   GRAFANA_PROVIDER="$(api_get "providers/oauth2/${EXISTING_PK}/")"
 else
   GRAFANA_PROVIDER="$(api_post "providers/oauth2/" "$GRAFANA_PROVIDER_BODY")"
-  EXISTING_PK="$(json_get "d['pk']" "$GRAFANA_PROVIDER")"
+  EXISTING_PK="$(json_field pk <<< "$GRAFANA_PROVIDER")"
   info "  Created provider pk=${EXISTING_PK}"
 fi
 
-GRAFANA_CLIENT_ID="$(json_get "d['client_id']" "$GRAFANA_PROVIDER")"
-GRAFANA_CLIENT_SECRET="$(json_get "d['client_secret']" "$GRAFANA_PROVIDER")"
+GRAFANA_CLIENT_ID="$(json_field client_id <<< "$GRAFANA_PROVIDER")"
+GRAFANA_CLIENT_SECRET="$(json_field client_secret <<< "$GRAFANA_PROVIDER")"
 
 # Create Grafana application
-EXISTING_APP="$(api_get "core/applications/?slug=grafana" || echo "{}")"
-APP_EXISTS="$(python3 -c "
-import json,sys
-d=json.loads('''${EXISTING_APP}''')
-print('yes' if d.get('results') else '')
-" 2>/dev/null || echo "")"
+APP_EXISTS="$({ api_get "core/applications/?slug=grafana" || true; } | json_field pk)"
 
 if [ -z "$APP_EXISTS" ]; then
   info "  Creating Grafana application..."
-  api_post "core/applications/" "$(python3 -c "
-import json
+  api_post "core/applications/" "$(PROVIDER="$EXISTING_PK" HOST="$XIB_HOST" python3 -c '
+import json, os
+host = os.environ["HOST"]
 print(json.dumps({
-    'name': 'Grafana',
-    'slug': 'grafana',
-    'provider': ${EXISTING_PK},
-    'meta_launch_url': 'http://${XIB_HOST}:3000',
-    'policy_engine_mode': 'any',
-    'group': '',
-    'open_in_new_tab': False,
+    "name": "Grafana",
+    "slug": "grafana",
+    "provider": int(os.environ["PROVIDER"]),
+    "meta_launch_url": f"http://{host}:3000",
+    "policy_engine_mode": "any",
+    "group": "",
+    "open_in_new_tab": False,
 }))
-")" > /dev/null
+')" > /dev/null
   info "  Application 'grafana' created."
 else
   warn "  Application 'grafana' already exists, skipping."
@@ -179,69 +190,60 @@ info "Provisioning step-ca OIDC provider in Authentik..."
 
 PIB_CA_PORT="${PIB_CA_PORT:-9000}"
 
-STEPCA_PROVIDER_BODY="$(python3 -c "
-import json
+STEPCA_PROVIDER_BODY="$(AUTH_FLOW="$AUTH_FLOW_PK" INVAL_FLOW="$INVAL_FLOW_PK" \
+  SIGN_KEY="$SIGN_KEY_PK" HOST="$XIB_HOST" CA_PORT="$PIB_CA_PORT" python3 -c '
+import json, os
+host, ca_port = os.environ["HOST"], os.environ["CA_PORT"]
 body = {
-    'name': 'PIB step-ca OIDC',
-    'authorization_flow': '${AUTH_FLOW_PK}',
-    'client_type': 'confidential',
-    'redirect_uris': [
-        {'url': 'http://${XIB_HOST}:${PIB_CA_PORT}/callback', 'matching_mode': 'strict'},
-        {'url': 'http://pib-ca:9000/callback', 'matching_mode': 'strict'},
-        {'url': 'urn:ietf:wg:oauth:2.0:oob', 'matching_mode': 'strict'},
+    "name": "PIB step-ca OIDC",
+    "authorization_flow": os.environ["AUTH_FLOW"],
+    "client_type": "confidential",
+    "redirect_uris": [
+        {"url": f"http://{host}:{ca_port}/callback", "matching_mode": "strict"},
+        {"url": "http://pib-ca:9000/callback", "matching_mode": "strict"},
+        {"url": "urn:ietf:wg:oauth:2.0:oob", "matching_mode": "strict"},
     ],
-    'sub_mode': 'user_email',
-    'include_claims_in_id_token': True,
-    'issuer_mode': 'global',
+    "sub_mode": "user_email",
+    "include_claims_in_id_token": True,
+    "issuer_mode": "global",
 }
-if '${INVAL_FLOW_PK}':
-    body['invalidation_flow'] = '${INVAL_FLOW_PK}'
-if '${SIGN_KEY_PK}' != 'null':
-    body['signing_key'] = '${SIGN_KEY_PK}'
+if os.environ["INVAL_FLOW"]:
+    body["invalidation_flow"] = os.environ["INVAL_FLOW"]
+if os.environ["SIGN_KEY"] != "null":
+    body["signing_key"] = os.environ["SIGN_KEY"]
 print(json.dumps(body))
-")"
+')"
 
-EXISTING_STEPCA_PROVIDER="$(api_get "providers/oauth2/?name=PIB+step-ca+OIDC" || echo "{}")"
-EXISTING_STEPCA_PK="$(python3 -c "
-import json,sys
-d=json.loads('''${EXISTING_STEPCA_PROVIDER}''')
-results = d.get('results', [])
-print(results[0]['pk'] if results else '')
-" 2>/dev/null || echo "")"
+EXISTING_STEPCA_PK="$({ api_get "providers/oauth2/?name=PIB+step-ca+OIDC" || true; } | json_field pk)"
 
 if [ -n "$EXISTING_STEPCA_PK" ]; then
   warn "  step-ca provider already exists (pk=${EXISTING_STEPCA_PK}), skipping creation."
   STEPCA_PROVIDER="$(api_get "providers/oauth2/${EXISTING_STEPCA_PK}/")"
 else
   STEPCA_PROVIDER="$(api_post "providers/oauth2/" "$STEPCA_PROVIDER_BODY")"
-  EXISTING_STEPCA_PK="$(json_get "d['pk']" "$STEPCA_PROVIDER")"
+  EXISTING_STEPCA_PK="$(json_field pk <<< "$STEPCA_PROVIDER")"
   info "  Created provider pk=${EXISTING_STEPCA_PK}"
 fi
 
-STEPCA_CLIENT_ID="$(json_get "d['client_id']" "$STEPCA_PROVIDER")"
-STEPCA_CLIENT_SECRET="$(json_get "d['client_secret']" "$STEPCA_PROVIDER")"
+STEPCA_CLIENT_ID="$(json_field client_id <<< "$STEPCA_PROVIDER")"
+STEPCA_CLIENT_SECRET="$(json_field client_secret <<< "$STEPCA_PROVIDER")"
 
 # Create step-ca application
-EXISTING_STEPCA_APP="$(api_get "core/applications/?slug=step-ca" || echo "{}")"
-STEPCA_APP_EXISTS="$(python3 -c "
-import json,sys
-d=json.loads('''${EXISTING_STEPCA_APP}''')
-print('yes' if d.get('results') else '')
-" 2>/dev/null || echo "")"
+STEPCA_APP_EXISTS="$({ api_get "core/applications/?slug=step-ca" || true; } | json_field pk)"
 
 if [ -z "$STEPCA_APP_EXISTS" ]; then
   info "  Creating step-ca application..."
-  api_post "core/applications/" "$(python3 -c "
-import json
+  api_post "core/applications/" "$(PROVIDER="$EXISTING_STEPCA_PK" python3 -c '
+import json, os
 print(json.dumps({
-    'name': 'PIB step-ca',
-    'slug': 'step-ca',
-    'provider': ${EXISTING_STEPCA_PK},
-    'policy_engine_mode': 'any',
-    'group': '',
-    'open_in_new_tab': False,
+    "name": "PIB step-ca",
+    "slug": "step-ca",
+    "provider": int(os.environ["PROVIDER"]),
+    "policy_engine_mode": "any",
+    "group": "",
+    "open_in_new_tab": False,
 }))
-")" > /dev/null
+')" > /dev/null
   info "  Application 'step-ca' created."
 else
   warn "  Application 'step-ca' already exists, skipping."

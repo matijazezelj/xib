@@ -2,19 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
-  compose:
+  # Runs without submodules so dashboard/script faults are still reported when
+  # a submodule checkout breaks.
+  static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-      - name: Validate Compose model
-        run: docker compose config >/tmp/xib-compose.yml
+      - name: Validate dashboards against provisioned datasources
+        run: python3 scripts/validate-dashboards.py
       - name: Validate helper scripts
         run: |
           if compgen -G "scripts/*.sh" > /dev/null; then
@@ -22,3 +22,24 @@ jobs:
               if head -1 "$script" | grep -q 'bash'; then bash -n "$script"; else sh -n "$script"; fi
             done
           fi
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      # The umbrella overrides services that come from `include:`, which the
+      # whole v2 line rejects with "conflicts with imported resource". Runners
+      # ship v2, so install the version the stack actually needs.
+      - name: Install Docker Compose v5
+        run: |
+          mkdir -p ~/.docker/cli-plugins
+          curl -fsSL -o ~/.docker/cli-plugins/docker-compose \
+            https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64
+          chmod +x ~/.docker/cli-plugins/docker-compose
+          docker compose version
+      - name: Validate Compose model
+        run: docker compose config --format json >/tmp/xib-compose.json
+      - name: Every published port must be bound to an explicit interface
+        run: python3 scripts/check-port-bindings.py /tmp/xib-compose.json

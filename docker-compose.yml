@@ -74,7 +74,7 @@ services:
 
   # ── XIB unified Grafana ────────────────────────────────────────────────────
   xib-grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:${GRAFANA_VERSION:-13.2.0}
     container_name: xib-grafana
     restart: unless-stopped
     ports:
@@ -95,6 +95,12 @@ services:
       - cib
       - iib
       - pib
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       - vib-victoriametrics
       - tib-victoriametrics
