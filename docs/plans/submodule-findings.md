@@ -37,7 +37,7 @@ the exposure is real.
 
 ## 2. `_safe_label` escapes in the wrong order — `iib`
 
-`iib/monitor/monitor.py:120`:
+`iib/monitor/monitor.py:122`:
 
 ```python
 return str(s).replace('"', '\\"').replace("\n", "").replace("\\", "\\\\")
@@ -57,7 +57,19 @@ return str(s).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "")
 ```
 
 `tib` has already fixed and round-trip verified its copy. `iib` still has it.
-Worth grepping `cib`, `pib`, and `vib` for the same helper.
+
+The other three were checked and are already correct — they escape the
+backslash first:
+
+| repo | location | order |
+|---|---|---|
+| `vib` | `scanner/scanner.py:190` | backslash first — OK |
+| `pib` | `monitor/monitor.py:190` | backslash first — OK |
+| `cib` | `checker/checker.py:140` | backslash first — OK |
+| `iib` | `monitor/monitor.py:122` | **quotes first — bug** |
+
+So `iib` is the only live instance in the umbrella, and it is the one repo with
+no standalone checkout outside the submodule tree.
 
 ---
 
