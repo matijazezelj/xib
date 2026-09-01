@@ -1,12 +1,16 @@
 # Findings that belong in the sub-project repos
 
-Found while auditing the XIB umbrella on 2026-09-01. Each of these lives in a
-submodule, so they are recorded here rather than fixed in `xib`. All three were
-reproduced, not inferred.
+Found while auditing the XIB umbrella on 2026-09-01. Each lives in a submodule
+rather than in `xib`. All three were reproduced, not inferred.
+
+**Status:** all three are fixed. TIB's is merged and this repo's pointer is
+bumped to it. IIB's two are in
+[matijazezelj/iib#2](https://github.com/matijazezelj/iib/pull/2); bump the
+`iib` pointer once that merges.
 
 ---
 
-## 1. TIB publishes two ports on 0.0.0.0 — `tib` — **fixed upstream, not yet committed**
+## 1. TIB publishes two ports on 0.0.0.0 — `tib` — **fixed, pointer bumped**
 
 `tib/docker-compose.yml` lines 22 and 37 publish without a bind address:
 
@@ -22,20 +26,18 @@ interfaces, so `tib-victoriametrics` (unauthenticated, and writable through
 `/api/v1/import`) and `tib-grafana` are reachable from the LAN while the rest of
 the stack is loopback-only.
 
-The `tib` session confirmed this independently — `docker ps` showed
-`0.0.0.0:8430->8428`, and a curl from its LAN address returned HTTP 200 — and
-has the fix staged locally along with a `BIND_ADDR` block in `.env.example`.
-Nothing is committed yet; `tib` master is still on `fa64459`, which is what this
-repo pins, so **do not bump the submodule pointer until that commit lands.**
+Confirmed independently from the `tib` side: `docker ps` showed
+`0.0.0.0:8430->8428`, and a curl from that host's LAN address returned HTTP 200
+against unauthenticated VictoriaMetrics.
 
-XIB now guards against a regression: `scripts/check-port-bindings.py` runs in CI
-and fails on any published port without an explicit host IP. It will stay red
-until the `tib` fix is committed and the pointer is bumped — that is intended,
-the exposure is real.
+Fixed in `tib` as `0d55328`, which adds the `BIND_ADDR` prefix to both ports and
+a `BIND_ADDR` block to its `.env.example`. This repo's pointer is bumped to it,
+and `scripts/check-port-bindings.py` now reports 14 published ports all with an
+explicit host IP.
 
 ---
 
-## 2. `_safe_label` escapes in the wrong order — `iib`
+## 2. `_safe_label` escapes in the wrong order — `iib` — **fix open in iib#2**
 
 `iib/monitor/monitor.py:122`:
 
@@ -56,7 +58,11 @@ Fix is to escape backslashes first:
 return str(s).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "")
 ```
 
-`tib` has already fixed and round-trip verified its copy. `iib` still has it.
+`tib` has already fixed and round-trip verified its copy.
+
+Measured against VictoriaMetrics v1.151.0 with four outpost names: the old order
+sent 4 lines, got HTTP 204, and stored **2** — both quote-containing values were
+gone. The fixed order stores all 4 and round-trips `a"b\c` intact.
 
 The other three were checked and are already correct — they escape the
 backslash first:
@@ -73,7 +79,7 @@ no standalone checkout outside the submodule tree.
 
 ---
 
-## 3. `make setup` silently generates no Authentik secrets on macOS — `iib`
+## 3. `make setup` silently generates no Authentik secrets on macOS — `iib` — **fix open in iib#2**
 
 `iib/Makefile:22-24` uses GNU `sed -i`:
 
@@ -103,5 +109,10 @@ Authentik cannot start and `make setup-sso` has no bootstrap token to use.
 **`make up` does not work on macOS today.**
 
 `scripts/init-env.sh` in this repo solves the same problem portably — write to a
-temp file and `mv` it over, rather than relying on `sed -i` semantics.
+temp file and copy it back, rather than relying on `sed -i` semantics.
 `pib/Makefile`'s `ca-password` target is fine; it only appends.
+
+The fix in iib#2 does the same, and additionally verifies the result so a future
+failure cannot report success again. It also anchors both `GENERATE_ME` greps to
+assignment lines: `.env.example` mentions the placeholder in a comment, so the
+unanchored check matched even after every secret was filled in.
