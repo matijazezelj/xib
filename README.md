@@ -24,11 +24,16 @@ xib/
 └── ...    ← XIB Grafana (unified dashboard, all 5 datasources)
 ```
 
-Each sub-project is a git submodule with its own independent `docker compose up` — XIB orchestrates them all via Docker Compose v2 `include:` directives and connects the unified Grafana to each tool's VictoriaMetrics instance.
+Each sub-project is a git submodule with its own independent `docker compose up` — XIB orchestrates them all via Compose `include:` directives and connects the unified Grafana to each tool's VictoriaMetrics instance.
 
 ---
 
 ## Quick start
+
+**Requires Docker Compose v5.0.0 or newer.** XIB overrides services that come
+from `include:`, which the entire v2 line rejects with `services.vib-grafana
+conflicts with imported resource` — verified failing on v2.40.3 and passing on
+v5.0.0. `make up` checks this and tells you before anything starts.
 
 ```bash
 git clone --recurse-submodules git@github.com:matijazezelj/xib.git
