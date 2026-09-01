@@ -1,7 +1,10 @@
 .PHONY: up down restart logs build clean setup setup-sso smoke update pull-submodules
 
+# --build so a `make update` that moves a submodule actually redeploys its
+# code. Without it Compose reuses the existing image and the stack silently
+# keeps running the previous commit. Costs ~2s when nothing changed.
 up: setup
-	docker compose up -d
+	docker compose up -d --build
 
 down:
 	docker compose down
