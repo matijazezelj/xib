@@ -39,6 +39,10 @@ jobs:
             https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64
           chmod +x ~/.docker/cli-plugins/docker-compose
           docker compose version
+      # The sub-projects refuse to start without their secrets, so generate them the way a
+      # user does. `make setup` also needs Compose v5, installed above.
+      - name: Generate secrets (make setup)
+        run: make setup
       - name: Validate Compose model
         run: docker compose config --format json >/tmp/xib-compose.json
       - name: Every published port must be bound to an explicit interface
