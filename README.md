@@ -122,7 +122,7 @@ These tools are privileged software, so the defaults matter.
   container through it. `make up-safe` instead runs a [read-only proxy](docker-compose.read-only-proxy.yml)
   that answers only the read calls the scanners need (list containers, read images) and returns
   403 for everything else. For several Docker hosts, run that proxy on each and set `DOCKER_HOSTS`
-  in `vib/.env` and `cib/.env`.
+  in xib's top-level `.env` (with `make up-safe`, a value in `vib/.env` or `cib/.env` is ignored).
 - **No default passwords.** `make setup` generates every secret. Compose refuses to start if a
   required one is unset, rather than falling back to a default.
 - **Pinned images.** Nothing pre-built uses `latest`. Bump the `*_TAG` variables deliberately.
