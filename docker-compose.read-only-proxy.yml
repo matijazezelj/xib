@@ -1,0 +1,88 @@
+# Recommended way to run XIB: the scanners talk to a read-only Docker API proxy
+# instead of mounting the Docker socket.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.read-only-proxy.yml up -d
+#   (or: make up-safe)
+#
+# Why: a socket mount is root on the host. Mounting it `:ro` does NOT help,
+# because that makes the socket *file* read-only, not the API behind it: a
+# container can still create privileged containers through it. This proxy
+# answers only the read calls the scanners make (list containers, read images)
+# and returns 403 for everything else.
+#
+# For several Docker hosts, run this proxy on each of them and set
+# DOCKER_HOSTS=name=tcp://host:2375,... in vib/.env and cib/.env instead.
+
+services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:${DOCKER_PROXY_TAG:-v0.5.0}
+    container_name: xib-docker-proxy
+    restart: unless-stopped
+    init: true
+    # Nothing is published: only containers on the xib-scan network can reach it.
+    networks:
+      - xib-scan
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1   # list/inspect containers
+      IMAGES: 1       # read images (Trivy needs to export them)
+      INFO: 1
+      VERSION: 1
+      PING: 1
+      POST: 0         # no writes of any kind
+      EXEC: 0
+      BUILD: 0
+      COMMIT: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      SERVICES: 0
+      SECRETS: 0
+      AUTH: 0
+      EVENTS: 0
+      SYSTEM: 0
+    read_only: true
+    tmpfs: [/run, /tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vib-scanner:
+    volumes: !override
+      - vib-trivy-cache:/root/.cache/trivy
+    environment:
+      DOCKER_HOSTS: "${DOCKER_HOSTS:-local=tcp://docker-proxy:2375}"
+    networks:
+      - vib        # keeps its normal network: it downloads the Trivy vulnerability DB
+      - xib-scan   # plus the private link to the proxy
+    depends_on:
+      - docker-proxy
+
+  cib-checker:
+    volumes: !override
+      - cib-trivy-cache:/root/.cache/trivy
+      - cib-data:/data
+    environment:
+      DOCKER_HOSTS: "${DOCKER_HOSTS:-local=tcp://docker-proxy:2375}"
+    networks:
+      - cib
+      - xib-scan
+    depends_on:
+      - docker-proxy
+
+  # Authentik's worker only needs the socket for its Docker-outpost integration,
+  # which IIB does not use.
+  iib-worker:
+    volumes: !override
+      - iib-authentik-media:/media
+      - iib-authentik-templates:/templates
+
+networks:
+  xib-scan:
+    driver: bridge
+    internal: true   # no route out: the proxy cannot call anything outside, and nothing outside can reach it

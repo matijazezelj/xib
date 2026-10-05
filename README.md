@@ -36,9 +36,10 @@ conflicts with imported resource` — verified failing on v2.40.3 and passing on
 v5.0.0. `make up` checks this and tells you before anything starts.
 
 ```bash
-git clone --recurse-submodules git@github.com:matijazezelj/xib.git
+git clone --recurse-submodules https://github.com/matijazezelj/xib.git
 cd xib
-make up
+make up-safe     # recommended: scanners use a read-only Docker proxy (see "Running it safely")
+# make up        # simplest: scanners mount the Docker socket (root on the host)
 ```
 
 If you already cloned without `--recurse-submodules`:
@@ -112,11 +113,32 @@ The **XIB Security Overview** (`uid: xib-overview`) aggregates data from all fiv
 
 ---
 
+## Running it safely
+
+These tools are privileged software, so the defaults matter.
+
+- **The Docker socket is root on the host.** Mounting it `:ro` does *not* help: that makes the
+  socket *file* read-only, not the API behind it, and a container can still create a privileged
+  container through it. `make up-safe` instead runs a [read-only proxy](docker-compose.read-only-proxy.yml)
+  that answers only the read calls the scanners need (list containers, read images) and returns
+  403 for everything else. For several Docker hosts, run that proxy on each and set `DOCKER_HOSTS`
+  in `vib/.env` and `cib/.env`.
+- **No default passwords.** `make setup` generates every secret. Compose refuses to start if a
+  required one is unset, rather than falling back to a default.
+- **Pinned images.** Nothing pre-built uses `latest`. Bump the `*_TAG` variables deliberately.
+  CI fails the build on a mutable tag or a socket mount (`make policy`).
+- **Nothing is published beyond loopback** unless you set `BIND_ADDR`. VictoriaMetrics has no
+  authentication; never expose it. CI checks that every published port has an explicit bind address.
+
+---
+
 ## Makefile targets
 
 | Target | Description |
 |--------|-------------|
-| `make up` | Start the full stack (runs setup first) |
+| `make up` | Start the full stack (runs setup first). Scanners mount the Docker socket |
+| `make up-safe` | Same, but scanners reach Docker through a read-only API proxy. **Recommended** |
+| `make policy` | Fail on mutable image tags or Docker socket mounts (the check CI runs) |
 | `make down` | Stop the full stack |
 | `make restart` | Restart all services |
 | `make build` | Rebuild all custom images |

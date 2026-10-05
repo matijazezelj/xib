@@ -43,3 +43,10 @@ jobs:
         run: docker compose config --format json >/tmp/xib-compose.json
       - name: Every published port must be bound to an explicit interface
         run: python3 scripts/check-port-bindings.py /tmp/xib-compose.json
+      - name: No mutable image tags (default path; its scanners may still mount the socket)
+        run: python3 scripts/check-image-policy.py --allow-socket /tmp/xib-compose.json
+      - name: Safe path - no mutable tags and NO Docker socket mounts (read-only proxy overlay)
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.read-only-proxy.yml config --format json >/tmp/xib-safe.json
+          python3 scripts/check-image-policy.py /tmp/xib-safe.json
+          python3 scripts/check-port-bindings.py /tmp/xib-safe.json

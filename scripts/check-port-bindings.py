@@ -20,7 +20,7 @@ ALLOWED_EMPTY: set[str] = set()
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
-        print(__doc__.strip().splitlines()[-1])
+        print((__doc__ or "").strip().splitlines()[-1])
         return 2
 
     model = json.loads(pathlib.Path(argv[1]).read_text())
