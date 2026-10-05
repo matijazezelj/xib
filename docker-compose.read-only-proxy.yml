@@ -11,7 +11,9 @@
 # and returns 403 for everything else.
 #
 # For several Docker hosts, run this proxy on each of them and set
-# DOCKER_HOSTS=name=tcp://host:2375,... in vib/.env and cib/.env instead.
+# DOCKER_HOSTS=name=tcp://host:2375,... in xib's top-level .env. The
+# `environment:` entries below take precedence over vib/.env and cib/.env, so a
+# DOCKER_HOSTS set there is ignored in this mode.
 
 services:
   docker-proxy:
