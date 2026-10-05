@@ -39,7 +39,18 @@ jobs:
             https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64
           chmod +x ~/.docker/cli-plugins/docker-compose
           docker compose version
+      # The sub-projects refuse to start without their secrets, so generate them the way a
+      # user does. `make setup` also needs Compose v5, installed above.
+      - name: Generate secrets (make setup)
+        run: make setup
       - name: Validate Compose model
         run: docker compose config --format json >/tmp/xib-compose.json
       - name: Every published port must be bound to an explicit interface
         run: python3 scripts/check-port-bindings.py /tmp/xib-compose.json
+      - name: No mutable image tags (default path; its scanners may still mount the socket)
+        run: python3 scripts/check-image-policy.py --allow-socket /tmp/xib-compose.json
+      - name: Safe path - no mutable tags and NO Docker socket mounts (read-only proxy overlay)
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.read-only-proxy.yml config --format json >/tmp/xib-safe.json
+          python3 scripts/check-image-policy.py /tmp/xib-safe.json
+          python3 scripts/check-port-bindings.py /tmp/xib-safe.json
