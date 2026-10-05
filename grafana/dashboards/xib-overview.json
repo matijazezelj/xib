@@ -143,8 +143,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "tib-vm" },
-          "expr": "sum(last_over_time(tib_kev_matches_in_environment[8h])) or vector(0)",
-          "legendFormat": "KEV matches",
+          "expr": "max(last_over_time(tib_kev_distinct_cves[8h])) or vector(0)",
+          "legendFormat": "Known-exploited CVEs",
           "refId": "A"
         }
       ]

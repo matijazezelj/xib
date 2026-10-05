@@ -81,7 +81,7 @@ services:
       - "${BIND_ADDR:-127.0.0.1}:${XIB_GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: "${XIB_GRAFANA_PASSWORD:-changeme}"
+      GF_SECURITY_ADMIN_PASSWORD: "${XIB_GRAFANA_PASSWORD:?XIB_GRAFANA_PASSWORD is not set; run `make setup`}"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/xib-overview.json
       <<: *grafana-sso
